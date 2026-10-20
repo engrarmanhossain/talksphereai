@@ -49,11 +49,18 @@ export function App() {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [currentSubtitle, setCurrentSubtitle] = useState('');
+  const [currentSubtitle, setCurrentSubtitle] = useState<string>(() => SCENARIOS[0].initialMessage);
   const [soundEffectsEnabled, setSoundEffectsEnabled] = useState(true);
 
   // Conversation state
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [
+    {
+      id: `ai-init-${Date.now()}`,
+      sender: 'ai',
+      text: SCENARIOS[0].initialMessage,
+      timestamp: Date.now(),
+    },
+  ]);
   const activeRecognizerRef = useRef<any>(null);
 
   // Modals state
@@ -63,7 +70,7 @@ export function App() {
   const [isScenarioModalOpen, setIsScenarioModalOpen] = useState(false);
   const [isApiModalOpen, setIsApiModalOpen] = useState(false);
   const [isStatsOpen, setIsStatsOpen] = useState(false);
-  const [hasApiKey, setHasApiKey] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState<boolean>(() => Boolean(AIService.getApiKey()));
   const [practiceData, setPracticeData] = useState<{
     isOpen: boolean;
     targetSentence: string;
@@ -117,41 +124,15 @@ export function App() {
     } catch {}
   }, [stats, messages, user]);
 
-  // Check if API key is stored
-  useEffect(() => {
-    setHasApiKey(Boolean(AIService.getApiKey()));
-  }, []);
-
   // Update sound effects enabled
   useEffect(() => {
     soundEffects.isEnabled = soundEffectsEnabled;
   }, [soundEffectsEnabled]);
 
-  // Start initial greeting when scenario or tutor changes
+  // Initial call sound effect
   useEffect(() => {
     soundEffects.playCallConnect();
-
-    // If messages are empty or reset, load initial greeting
-    if (messages.length === 0 || messages[0]?.id?.startsWith('ai-init-')) {
-      const greetingMsg: ChatMessage = {
-        id: `ai-init-${Date.now()}`,
-        sender: 'ai',
-        text: currentScenario.initialMessage,
-        timestamp: Date.now(),
-      };
-      setMessages([greetingMsg]);
-      setCurrentSubtitle(greetingMsg.text);
-
-      const timer = setTimeout(() => {
-        handleSpeakAiMessage(greetingMsg.text);
-      }, 450);
-
-      return () => {
-        clearTimeout(timer);
-        speechService.stopSpeaking();
-      };
-    }
-  }, [currentScenario, voiceGender]);
+  }, []);
 
   // Speak AI Message
   const handleSpeakAiMessage = (text: string) => {
@@ -177,6 +158,25 @@ export function App() {
   const handleStopSpeaking = () => {
     speechService.stopSpeaking();
     setIsSpeaking(false);
+  };
+
+  // Switch Scenario
+  const handleSelectScenario = (scenario: Scenario) => {
+    handleStopSpeaking();
+    setCurrentScenario(scenario);
+    soundEffects.playCallConnect();
+    const greetingMsg: ChatMessage = {
+      id: `ai-init-${Date.now()}`,
+      sender: 'ai',
+      text: scenario.initialMessage,
+      timestamp: Date.now(),
+    };
+    setMessages([greetingMsg]);
+    setCurrentSubtitle(greetingMsg.text);
+    setIsPaused(false);
+    setTimeout(() => {
+      handleSpeakAiMessage(greetingMsg.text);
+    }, 400);
   };
 
   // Toggle Pause / Resume
@@ -274,7 +274,7 @@ export function App() {
       activeRecognizerRef.current = recognizer;
       try {
         recognizer.start();
-      } catch (e: any) {
+      } catch {
         setIsListening(false);
         if (audioAnalyserRef.current) {
           audioAnalyserRef.current.stop();
@@ -387,6 +387,9 @@ export function App() {
     setMessages([greetingMsg]);
     setCurrentSubtitle(greetingMsg.text);
     setIsPaused(false);
+    setTimeout(() => {
+      handleSpeakAiMessage(greetingMsg.text);
+    }, 300);
   };
 
   return (
@@ -398,7 +401,7 @@ export function App() {
           handleStopSpeaking();
           setCurrentLevel(lvl);
           const match = SCENARIOS.find((s) => s.level === lvl) || SCENARIOS[0];
-          setCurrentScenario(match);
+          handleSelectScenario(match);
         }}
         currentScenario={currentScenario}
         onOpenScenarioModal={() => setIsScenarioModalOpen(true)}
@@ -505,6 +508,7 @@ export function App() {
 
       {/* Pronunciation & Repetition Drill Modal */}
       <PracticeModal
+        key={practiceData.targetSentence}
         isOpen={practiceData.isOpen}
         onClose={() => setPracticeData((prev) => ({ ...prev, isOpen: false }))}
         targetSentence={practiceData.targetSentence}
@@ -518,13 +522,14 @@ export function App() {
         onClose={() => setIsScenarioModalOpen(false)}
         currentScenario={currentScenario}
         onSelectScenario={(s) => {
-          handleStopSpeaking();
-          setCurrentScenario(s);
+          handleSelectScenario(s);
         }}
         currentLevel={currentLevel}
         onLevelChange={(lvl) => {
           handleStopSpeaking();
           setCurrentLevel(lvl);
+          const match = SCENARIOS.find((sc) => sc.level === lvl) || SCENARIOS[0];
+          handleSelectScenario(match);
         }}
       />
 

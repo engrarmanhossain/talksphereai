@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Mic,
@@ -30,21 +30,32 @@ export const PracticeModal: React.FC<PracticeModalProps> = ({
   const [spokenTranscript, setSpokenTranscript] = useState('');
   const [score, setScore] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<string>('');
-  const [recognizer, setRecognizer] = useState<any>(null);
+  const recognizerRef = useRef<any>(null);
+
+  const handleClose = () => {
+    if (recognizerRef.current) {
+      try {
+        recognizerRef.current.abort();
+      } catch {}
+      recognizerRef.current = null;
+    }
+    setIsRecording(false);
+    setSpokenTranscript('');
+    setScore(null);
+    setFeedback('');
+    onClose();
+  };
 
   useEffect(() => {
-    if (!isOpen) {
-      setIsRecording(false);
-      setSpokenTranscript('');
-      setScore(null);
-      setFeedback('');
-      if (recognizer) {
+    return () => {
+      if (recognizerRef.current) {
         try {
-          recognizer.abort();
+          recognizerRef.current.abort();
         } catch {}
+        recognizerRef.current = null;
       }
-    }
-  }, [isOpen]);
+    };
+  }, []);
 
   if (!isOpen) return null;
 
@@ -71,7 +82,11 @@ export const PracticeModal: React.FC<PracticeModalProps> = ({
 
   const handleStartPracticing = () => {
     if (isRecording) {
-      if (recognizer) recognizer.stop();
+      if (recognizerRef.current) {
+        try {
+          recognizerRef.current.stop();
+        } catch {}
+      }
       setIsRecording(false);
       return;
     }
@@ -115,7 +130,7 @@ export const PracticeModal: React.FC<PracticeModalProps> = ({
     });
 
     if (rec) {
-      setRecognizer(rec);
+      recognizerRef.current = rec;
       rec.start();
     }
   };
@@ -125,7 +140,7 @@ export const PracticeModal: React.FC<PracticeModalProps> = ({
       <div className="relative w-full max-w-lg rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl p-6 sm:p-7 text-slate-100">
         {/* Close Button */}
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
         >
           <X className="w-5 h-5" />
@@ -217,7 +232,7 @@ export const PracticeModal: React.FC<PracticeModalProps> = ({
           </button>
 
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
           >
             Done Practicing
